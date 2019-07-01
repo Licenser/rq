@@ -1,0 +1,10 @@
+[package]
+name = "toylang"
+version = "0.1.0"
+authors = ["Heinz N. Gies <heinz@licenser.net>"]
+edition = "2018"
+
+[dependencies]
+nom = "*"
+inkwell = {version = "*", git = "https://github.com/TheDan64/inkwell", branch = "llvm7-0"}
+clap = "*"
