@@ -6,8 +6,7 @@ use nom::{
     bytes::complete::{tag, take_while1},
     character::complete::{digit1 as digit, multispace0 as multispace},
     combinator::{map, map_res},
-    multi::many0,
-    multi::separated_list,
+    multi::{many0, many1, separated_list},
     sequence::{delimited, preceded},
     IResult,
 };
@@ -120,4 +119,44 @@ fn dl(i: &str) -> IResult<&str, &str> {
 
 pub fn exprs(i: &str) -> IResult<&str, Vec<Expr>> {
     separated_list(dl, preceded(multispace, expr))(i)
+}
+
+#[derive(Debug)]
+pub enum Path {
+    Root,
+    Key(String),
+    Idx(usize),
+}
+
+fn path_key(i: &str) -> IResult<&str, Path> {
+    map(ident, Path::Key)(i)
+}
+
+fn path_idx(i: &str) -> IResult<&str, Path> {
+    map(
+        map_res(
+            delimited(tag("["), delimited(multispace, digit, multispace), tag("]")),
+            FromStr::from_str,
+        ),
+        Path::Idx,
+    )(i)
+}
+
+fn path_seg(i: &str) -> IResult<&str, Path> {
+    alt((preceded(tag("."), path_key), path_idx))(i)
+}
+pub fn path(i: &str) -> IResult<&str, Vec<Path>> {
+    let (mut i, _) = tag(".")(i)?;
+    let mut path = vec![Path::Root];
+
+    match alt((path_key, path_idx))(i) {
+        Ok((i1, s)) => {
+            path.push(s);
+            i = i1
+        }
+        Err(_) => return Ok((i, path)),
+    }
+    let (i, mut ps) = many0(path_seg)(i)?;
+    path.append(&mut ps);
+    Ok((i, path))
 }

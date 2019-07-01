@@ -12,7 +12,7 @@ use std::error::Error;
 
 #[no_mangle]
 pub extern "C" fn printd(w: Wrap, x: i64) -> i64 {
-    println!("==> {} / {:?}", x, unsafe{&*w.h});
+    println!("==> {} / {:?}", x, unsafe { &*w.h });
     x
 }
 
@@ -23,7 +23,7 @@ static EXTERNAL_FNS: [extern "C" fn(Wrap, i64) -> i64; 1] = [printd];
 
 fn main() -> Result<(), Box<Error>> {
     let mut hash: HashMap<String, String> = HashMap::new();
-     hash.insert("a".into(), "b".into());
+    hash.insert("a".into(), "b".into());
     let wrap = Wrap { h: &hash };
     let script = "let a = 3; let a = 4 + a; a * 6";
     let (r, ast) = exprs(script).expect("Unable build ast");
@@ -38,5 +38,10 @@ fn main() -> Result<(), Box<Error>> {
     let fun = c.jit_compile_expr_root(&ast)?;
     dbg!(unsafe { fun.call(wrap) });
     println!("Hello, world!");
+    dbg!(path("."));
+    dbg!(path(".[7]"));
+    dbg!(path(".bla"));
+    dbg!(path(".bla.blubb[7]"));
+
     Ok(())
 }
