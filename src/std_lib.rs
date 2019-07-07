@@ -95,21 +95,15 @@ pub unsafe extern "C" fn jq_get_key(mut wrap: Wrap, key: *const u8, len: usize) 
     use std::str;
     let key_slice: &[u8] = from_raw_parts(key, len);
     let key_str = str::from_utf8(key_slice).unwrap();
-    dbg!(key_str);
     if let Some(o) = (&*wrap.json).as_object() {
-        dbg!();
         if let Some(v) = o.get(key_str) {
-            dbg!();
             wrap.json = v;
         } else {
-            dbg!();
             wrap.error = 1;
         }
     } else {
-        dbg!();
         wrap.error = 2;
     }
-    dbg!(&*wrap.json);
     wrap
 }
 
@@ -119,16 +113,12 @@ static E_GET_IDX: unsafe extern "C" fn(Wrap, usize) -> Wrap = jq_get_idx;
 pub unsafe extern "C" fn jq_get_idx(mut wrap: Wrap, idx: usize) -> Wrap {
     if let Some(o) = (&*wrap.json).as_array() {
         if let Some(v) = o.get(idx) {
-            dbg!();
             wrap.json = v;
         } else {
-            dbg!();
             wrap.error = 1;
         }
     } else {
-        dbg!();
         wrap.error = 2;
     }
-    dbg!(&*wrap.json);
     wrap
 }

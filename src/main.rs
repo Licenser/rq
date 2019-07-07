@@ -35,15 +35,14 @@ fn main() -> Result<(), Box<Error>> {
 
     let mut jq = Script::from_path(vec![Path::Root, Path::Key("a".into()), Path::Idx(1)]);
     let jqs = jq.jit_compile_main()?;
-    let r = unsafe { jqs.call(wrap) };
-    dbg!(unsafe { &*r.json });
-    dbg!(unsafe { r.error });
-    if r.error == 0 { 
-        println!((&*r.json).to_string())
-    } else {
-        println!("Error: {}", r.error)
+    unsafe {
+        let r = jqs.call(wrap);
+        if r.error == 0 {
+            println!("{}", (&*r.json).to_string())
+        } else {
+            println!("Error: {}", r.error)
+        }
     }
-
     /*
     let script = "let a = 3; let a = 4 + a; a * 6";
     let (r, ast) = exprs(script).expect("Unable build ast");
