@@ -1,4 +1,4 @@
-use crate::compiler::{Compile, Compiler, CompilerError};
+use crate::compiler::*;
 use inkwell::values::IntValue;
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -51,8 +51,8 @@ pub struct AddExpr {
     pub right: Box<Expr>,
 }
 
-impl Compile<IntValue> for AddExpr {
-    fn compile(&self, compiler: &mut Compiler) -> Result<IntValue, CompilerError> {
+impl Compile<IntValue, MathCompiler> for AddExpr {
+    fn compile(&self, compiler: &mut MathCompiler) -> Result<IntValue, CompilerError> {
         let l = self.left.compile(compiler)?;
         let r = self.right.compile(compiler)?;
         Ok(compiler.builder.build_int_add(l, r, "add"))
@@ -64,8 +64,8 @@ pub struct SubExpr {
     pub right: Box<Expr>,
 }
 
-impl Compile<IntValue> for SubExpr {
-    fn compile(&self, compiler: &mut Compiler) -> Result<IntValue, CompilerError> {
+impl Compile<IntValue, MathCompiler> for SubExpr {
+    fn compile(&self, compiler: &mut MathCompiler) -> Result<IntValue, CompilerError> {
         let l = self.left.compile(compiler)?;
         let r = self.right.compile(compiler)?;
         Ok(compiler.builder.build_int_sub(l, r, "add"))
@@ -77,8 +77,8 @@ pub struct MulExpr {
     pub right: Box<Expr>,
 }
 
-impl Compile<IntValue> for MulExpr {
-    fn compile(&self, compiler: &mut Compiler) -> Result<IntValue, CompilerError> {
+impl Compile<IntValue, MathCompiler> for MulExpr {
+    fn compile(&self, compiler: &mut MathCompiler) -> Result<IntValue, CompilerError> {
         let l = self.left.compile(compiler)?;
         let r = self.right.compile(compiler)?;
         Ok(compiler.builder.build_int_mul(l, r, "add"))
@@ -90,16 +90,16 @@ pub struct DivExpr {
     pub right: Box<Expr>,
 }
 
-impl Compile<IntValue> for DivExpr {
-    fn compile(&self, compiler: &mut Compiler) -> Result<IntValue, CompilerError> {
+impl Compile<IntValue, MathCompiler> for DivExpr {
+    fn compile(&self, compiler: &mut MathCompiler) -> Result<IntValue, CompilerError> {
         let l = self.left.compile(compiler)?;
         let r = self.right.compile(compiler)?;
-        Ok(compiler.builder.build_int_signed_div(l, r, "add"))
+        Ok(compiler.builder().build_int_signed_div(l, r, "add"))
     }
 }
-impl Compile<IntValue> for Expr {
-    fn compile(&self, compiler: &mut Compiler) -> Result<IntValue, CompilerError> {
-        let i64_type = compiler.context.i64_type();
+impl Compile<IntValue, MathCompiler> for Expr {
+    fn compile(&self, compiler: &mut MathCompiler) -> Result<IntValue, CompilerError> {
+        let i64_type = compiler.context().i64_type();
         match self {
             Expr::Value(v) => Ok(if *v < 0 {
                 i64_type.const_int((*v * -1) as u64, true)

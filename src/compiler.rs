@@ -15,12 +15,51 @@ use inkwell::types::{BasicTypeEnum, FunctionType, StructType};
 use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::OptimizationLevel;
 
+#[derive(Debug)]
 pub struct Wrap {
     pub h: *const HashMap<String, String>,
 }
 
-pub trait Compile<T> {
-    fn compile(&self, compiler: &mut Compiler) -> Result<T, CompilerError>;
+pub trait Compile<Ret, Comp: Compiler> {
+    fn compile(&self, compiler: &mut Comp) -> Result<Ret, CompilerError>;
+}
+
+pub trait Compiler {
+    fn context(&self) -> &Context;
+    fn module(&self) -> &Module; 
+    fn json_struct(&self) -> StructType;
+    fn builder(&self) -> &Builder;
+    fn type_for(&self, t: &JQType) -> BasicTypeEnum {
+        match t {
+            JQType::JSON => self.json_struct().into(),
+            JQType::Integer => self.context().i64_type().into(),
+            JQType::Float => self.context().f64_type().into(),
+            JQType::Void => unreachable!(),
+        }
+    }
+    fn fn_type_for(&self, t: &JQType, args: &[BasicTypeEnum]) -> FunctionType {
+        match t {
+            JQType::JSON => self.json_struct().fn_type(args, false),
+            JQType::Integer => self.context().i64_type().fn_type(args, false),
+            JQType::Float => self.context().f64_type().fn_type(args, false),
+            JQType::Void => self.context().void_type().fn_type(args, false),
+        }
+    }
+}
+
+impl Compiler for MathCompiler  {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+    fn module(&self) -> &Module {
+        &self.module
+    }
+    fn builder(&self) -> &Builder {
+        &self.builder
+    }
+    fn json_struct(&self) -> StructType {
+        self.json_struct
+    }
 }
 
 #[derive(Debug)]
@@ -39,7 +78,7 @@ impl Display for CompilerError {
 
 type MainFunc = unsafe extern "C" fn(Wrap) -> i64;
 
-pub struct Compiler {
+pub struct MathCompiler {
     pub context: Context,
     pub module: Module,
     pub builder: Builder,
@@ -49,7 +88,7 @@ pub struct Compiler {
     pub json_struct: StructType,
 }
 
-impl Compiler {
+impl MathCompiler {
     pub fn new() -> Self {
         let context = Context::create();
         let module = context.create_module("toylang");
@@ -60,7 +99,7 @@ impl Compiler {
         let i64_type = context.i64_type();
         let json_struct = context.struct_type(&[i64_type.into()], false);
 
-        Self {
+        let c = Self {
             context,
             module,
             builder,
@@ -68,25 +107,14 @@ impl Compiler {
             variables: HashMap::new(),
             fn_value_opt: None,
             json_struct,
+        };
+        for p in &STDLIB {
+            p.compile::<MathCompiler>(&c);
         }
+        c
     }
 
-    pub fn type_for(&self, t: &JQType) -> BasicTypeEnum {
-        match t {
-            JQType::JSON => self.json_struct.into(),
-            JQType::Integer => self.context.i64_type().into(),
-            JQType::Float => self.context.f64_type().into(),
-            JQType::Void => unreachable!(),
-        }
-    }
-    pub fn fn_type_for(&self, t: &JQType, args: &[BasicTypeEnum]) -> FunctionType {
-        match t {
-            JQType::JSON => self.json_struct.fn_type(args, false),
-            JQType::Integer => self.context.i64_type().fn_type(args, false),
-            JQType::Float => self.context.f64_type().fn_type(args, false),
-            JQType::Void => self.context.void_type().fn_type(args, false),
-        }
-    }
+
 
     #[inline]
     pub fn get_function(&self, name: &str) -> Result<FunctionValue, CompilerError> {
@@ -94,12 +122,6 @@ impl Compiler {
             Some(f) => Ok(f),
             None => Err(CompilerError::UnknownFunction(name.to_string())),
         }
-    }
-    pub fn init(&self, ps: &[Prototype]) -> &Self {
-        for p in ps {
-            p.compile(self);
-        }
-        self
     }
 
     /// Returns the `FunctionValue` representing the function being compiled.
