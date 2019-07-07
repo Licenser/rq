@@ -1,13 +1,8 @@
 use crate::expr::*;
-//use crate::jq::*;
+use crate::jq::*;
 use std::str::FromStr;
 
-#[derive(Debug)]
-pub enum Path {
-    Root,
-    Key(String),
-    Idx(usize),
-}
+
 
 use nom::{
     branch::alt,

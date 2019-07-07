@@ -1,6 +1,7 @@
 use crate::expr::*;
 use crate::std_lib::*;
 
+use simd_json::OwnedValue as Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -13,11 +14,13 @@ use inkwell::execution_engine::{ExecutionEngine, JitFunction};
 use inkwell::module::Module;
 use inkwell::types::{BasicTypeEnum, FunctionType, StructType};
 use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::AddressSpace;
 use inkwell::OptimizationLevel;
 
 #[derive(Debug)]
 pub struct Wrap {
-    pub h: *const HashMap<String, String>,
+    pub error: u64,
+    pub json: *const Value,
 }
 
 pub trait Compile<Ret, Comp: Compiler> {
@@ -26,7 +29,7 @@ pub trait Compile<Ret, Comp: Compiler> {
 
 pub trait Compiler {
     fn context(&self) -> &Context;
-    fn module(&self) -> &Module; 
+    fn module(&self) -> &Module;
     fn json_struct(&self) -> StructType;
     fn builder(&self) -> &Builder;
     fn type_for(&self, t: &JQType) -> BasicTypeEnum {
@@ -34,6 +37,11 @@ pub trait Compiler {
             JQType::JSON => self.json_struct().into(),
             JQType::Integer => self.context().i64_type().into(),
             JQType::Float => self.context().f64_type().into(),
+            JQType::String => self
+                .context()
+                .i8_type()
+                .ptr_type(AddressSpace::Global)
+                .into(),
             JQType::Void => unreachable!(),
         }
     }
@@ -43,11 +51,19 @@ pub trait Compiler {
             JQType::Integer => self.context().i64_type().fn_type(args, false),
             JQType::Float => self.context().f64_type().fn_type(args, false),
             JQType::Void => self.context().void_type().fn_type(args, false),
+            JQType::String => unreachable!(),
+        }
+    }
+    #[inline]
+    fn get_function(&self, name: &str) -> Result<FunctionValue, CompilerError> {
+        match self.module().get_function(name) {
+            Some(f) => Ok(f),
+            None => Err(CompilerError::UnknownFunction(name.to_string())),
         }
     }
 }
 
-impl Compiler for MathCompiler  {
+impl Compiler for MathCompiler {
     fn context(&self) -> &Context {
         &self.context
     }
@@ -97,7 +113,7 @@ impl MathCompiler {
             .create_jit_execution_engine(OptimizationLevel::None)
             .unwrap();
         let i64_type = context.i64_type();
-        let json_struct = context.struct_type(&[i64_type.into()], false);
+        let json_struct = context.struct_type(&[i64_type.into(), i64_type.into()], false);
 
         let c = Self {
             context,
@@ -112,16 +128,6 @@ impl MathCompiler {
             p.compile::<MathCompiler>(&c);
         }
         c
-    }
-
-
-
-    #[inline]
-    pub fn get_function(&self, name: &str) -> Result<FunctionValue, CompilerError> {
-        match self.module.get_function(name) {
-            Some(f) => Ok(f),
-            None => Err(CompilerError::UnknownFunction(name.to_string())),
-        }
     }
 
     /// Returns the `FunctionValue` representing the function being compiled.

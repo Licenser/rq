@@ -2,11 +2,12 @@ use crate::compiler::*;
 
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::FunctionValue;
+use simd_json::value::ValueTrait;
 
 #[derive(Debug, Clone, Copy)]
 pub enum JQType {
     JSON,
-    //    Stirng,
+    String,
     Integer,
     Float,
     Void,
@@ -21,8 +22,10 @@ pub struct Prototype {
     pub ret: JQType,
 }
 impl Prototype {
-    pub fn compile<C: Compiler>(&self, compiler: &Compiler) -> Result<FunctionValue, CompilerError> {
-
+    pub fn compile<C: Compiler>(
+        &self,
+        compiler: &Compiler,
+    ) -> Result<FunctionValue, CompilerError> {
         let args_types: Vec<BasicTypeEnum> = self
             .args
             .iter()
@@ -38,15 +41,15 @@ impl Prototype {
     }
 }
 
-pub static STDLIB: [Prototype; 3] = [
+pub static STDLIB: [Prototype; 5] = [
     Prototype {
         name: "printd",
-        args: &[("w", JQType::JSON)],
+        args: &[("json", JQType::JSON)],
         ret: JQType::Void,
     },
     Prototype {
         name: "printjson",
-        args: &[("w", JQType::JSON)],
+        args: &[("json", JQType::JSON)],
         ret: JQType::Void,
     },
     Prototype {
@@ -54,13 +57,27 @@ pub static STDLIB: [Prototype; 3] = [
         args: &[],
         ret: JQType::Void,
     },
+    Prototype {
+        name: "jq_get_key",
+        args: &[
+            ("json", JQType::JSON),
+            ("key", JQType::String),
+            ("len", JQType::Integer),
+        ],
+        ret: JQType::JSON,
+    },
+    Prototype {
+        name: "jq_get_idx",
+        args: &[("json", JQType::JSON), ("idx", JQType::Integer)],
+        ret: JQType::JSON,
+    },
 ];
 
 #[used]
 static E_PRINTJSON: [extern "C" fn(Wrap); 1] = [printjson];
 #[no_mangle]
 pub extern "C" fn printjson(w: Wrap) {
-    println!("{:?}", unsafe { &*w.h });
+    println!("{:?}", unsafe { &*w.json });
 }
 
 #[used]
@@ -71,9 +88,47 @@ pub extern "C" fn dbg() {
 }
 
 #[used]
-static E_GET: extern "C" fn(Wrap, *const u8, u8) -> Wrap = jq_get;
+static E_GET_KEY: unsafe extern "C" fn(Wrap, *const u8, usize) -> Wrap = jq_get_key;
 #[no_mangle]
-pub extern "C" fn jq_get(w: Wrap, key: *const u8, len: u8) -> Wrap {
-    println!("==> {:?}", unsafe { &*w.h });
-    w
+pub unsafe extern "C" fn jq_get_key(mut wrap: Wrap, key: *const u8, len: usize) -> Wrap {
+    use std::slice::from_raw_parts;
+    use std::str;
+    let key_slice: &[u8] = from_raw_parts(key, len);
+    let key_str = str::from_utf8(key_slice).unwrap();
+    dbg!(key_str);
+    if let Some(o) = (&*wrap.json).as_object() {
+        dbg!();
+        if let Some(v) = o.get(key_str) {
+            dbg!();
+            wrap.json = v;
+        } else {
+            dbg!();
+            wrap.error = 1;
+        }
+    } else {
+        dbg!();
+        wrap.error = 2;
+    }
+    dbg!(&*wrap.json);
+    wrap
+}
+
+#[used]
+static E_GET_IDX: unsafe extern "C" fn(Wrap, usize) -> Wrap = jq_get_idx;
+#[no_mangle]
+pub unsafe extern "C" fn jq_get_idx(mut wrap: Wrap, idx: usize) -> Wrap {
+    if let Some(o) = (&*wrap.json).as_array() {
+        if let Some(v) = o.get(idx) {
+            dbg!();
+            wrap.json = v;
+        } else {
+            dbg!();
+            wrap.error = 1;
+        }
+    } else {
+        dbg!();
+        wrap.error = 2;
+    }
+    dbg!(&*wrap.json);
+    wrap
 }
