@@ -1,5 +1,13 @@
 use crate::expr::*;
+//use crate::jq::*;
 use std::str::FromStr;
+
+#[derive(Debug)]
+pub enum Path {
+    Root,
+    Key(String),
+    Idx(usize),
+}
 
 use nom::{
     branch::alt,
@@ -119,13 +127,6 @@ fn dl(i: &str) -> IResult<&str, &str> {
 
 pub fn exprs(i: &str) -> IResult<&str, Vec<Expr>> {
     separated_list(dl, preceded(multispace, expr))(i)
-}
-
-#[derive(Debug)]
-pub enum Path {
-    Root,
-    Key(String),
-    Idx(usize),
 }
 
 fn path_key(i: &str) -> IResult<&str, Path> {

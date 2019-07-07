@@ -2,24 +2,24 @@ use std::collections::HashMap;
 
 mod compiler;
 mod expr;
+mod std_lib;
+//mod jq;
 mod parser;
 
 use crate::compiler::*;
-
 use crate::parser::*;
-
 use std::error::Error;
+use std_lib::*;
 
 #[no_mangle]
-pub extern "C" fn printd(w: Wrap, x: i64) -> i64 {
-    println!("==> {} / {:?}", x, unsafe { &*w.h });
-    x
+pub extern "C" fn printd(w: Wrap) {
+    println!("{:?}", unsafe { &*w.h });
 }
 
 // Adding the functions above to a global array,
 // so Rust compiler won't remove them.
 #[used]
-static EXTERNAL_FNS: [extern "C" fn(Wrap, i64) -> i64; 1] = [printd];
+static EXTERNAL_FNS: [extern "C" fn(Wrap); 1] = [printd];
 
 fn main() -> Result<(), Box<Error>> {
     let mut hash: HashMap<String, String> = HashMap::new();
@@ -31,17 +31,15 @@ fn main() -> Result<(), Box<Error>> {
     dbg!(&ast);
 
     let mut c = Compiler::new();
-    c.init(&[Prototype {
-        name: "printd".to_string(),
-        args: vec!["w".to_string(), "x".to_string()],
-    }]);
+    c.init(&STDLIB);
     let fun = c.jit_compile_expr_root(&ast)?;
     dbg!(unsafe { fun.call(wrap) });
+    /*
     println!("Hello, world!");
-    dbg!(path("."));
-    dbg!(path(".[7]"));
-    dbg!(path(".bla"));
-    dbg!(path(".bla.blubb[7]"));
-
+    let _ = dbg!(path("."));
+    let _ = dbg!(path(".[7]"));
+    let _ = dbg!(path(".bla"));
+    let _ = dbg!(path(".bla.blubb[7]"));
+    */
     Ok(())
 }

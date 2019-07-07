@@ -1,8 +1,9 @@
 use crate::expr::*;
-use std::fmt;
+use crate::std_lib::*;
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 use std::fmt::{Display, Formatter};
 
 use inkwell::basic_block::BasicBlock;
@@ -10,21 +11,22 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::execution_engine::{ExecutionEngine, JitFunction};
 use inkwell::module::Module;
-use inkwell::types::{BasicTypeEnum, StructType};
-use inkwell::values::{FunctionValue, IntValue, PointerValue};
+use inkwell::types::{BasicTypeEnum, FunctionType, StructType};
+use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::OptimizationLevel;
 
 pub struct Wrap {
     pub h: *const HashMap<String, String>,
 }
 
-pub trait Compile {
-    fn compile(&self, compiler: &mut Compiler) -> Result<IntValue, CompilerError>;
+pub trait Compile<T> {
+    fn compile(&self, compiler: &mut Compiler) -> Result<T, CompilerError>;
 }
 
 #[derive(Debug)]
 pub enum CompilerError {
     Generic,
+    UnknownFunction(String),
     UnknownVariable(String),
 }
 impl Error for CompilerError {}
@@ -44,16 +46,7 @@ pub struct Compiler {
     pub execution_engine: ExecutionEngine,
     pub variables: HashMap<String, PointerValue>,
     pub fn_value_opt: Option<FunctionValue>,
-    pub wrap_struct: StructType,
-}
-
-/// Defines the prototype (name and parameters) of a function.
-#[derive(Debug)]
-pub struct Prototype {
-    pub name: String,
-    pub args: Vec<String>,
-    //pub is_op: bool,
-    //pub prec: usize
+    pub json_struct: StructType,
 }
 
 impl Compiler {
@@ -65,7 +58,7 @@ impl Compiler {
             .create_jit_execution_engine(OptimizationLevel::None)
             .unwrap();
         let i64_type = context.i64_type();
-        let wrap_struct = context.struct_type(&[i64_type.into()], false);
+        let json_struct = context.struct_type(&[i64_type.into()], false);
 
         Self {
             context,
@@ -74,16 +67,37 @@ impl Compiler {
             execution_engine,
             variables: HashMap::new(),
             fn_value_opt: None,
-            wrap_struct,
+            json_struct,
         }
     }
+
+    pub fn type_for(&self, t: &JQType) -> BasicTypeEnum {
+        match t {
+            JQType::JSON => self.json_struct.into(),
+            JQType::Integer => self.context.i64_type().into(),
+            JQType::Float => self.context.f64_type().into(),
+            JQType::Void => unreachable!(),
+        }
+    }
+    pub fn fn_type_for(&self, t: &JQType, args: &[BasicTypeEnum]) -> FunctionType {
+        match t {
+            JQType::JSON => self.json_struct.fn_type(args, false),
+            JQType::Integer => self.context.i64_type().fn_type(args, false),
+            JQType::Float => self.context.f64_type().fn_type(args, false),
+            JQType::Void => self.context.void_type().fn_type(args, false),
+        }
+    }
+
     #[inline]
-    pub fn get_function(&self, name: &str) -> Option<FunctionValue> {
-        self.module.get_function(name)
+    pub fn get_function(&self, name: &str) -> Result<FunctionValue, CompilerError> {
+        match self.module.get_function(name) {
+            Some(f) => Ok(f),
+            None => Err(CompilerError::UnknownFunction(name.to_string())),
+        }
     }
     pub fn init(&self, ps: &[Prototype]) -> &Self {
         for p in ps {
-            self.compile_prototype(p);
+            p.compile(self);
         }
         self
     }
@@ -112,32 +126,13 @@ impl Compiler {
         builder.build_alloca(self.context.i64_type(), name)
     }
 
-    fn compile_prototype(&self, proto: &Prototype) -> Result<FunctionValue, CompilerError> {
-        let ret_type = self.context.i64_type();
-        let args_types: Vec<BasicTypeEnum> = vec![self.wrap_struct.into(), ret_type.into()];
-        let args_types = args_types.as_slice();
-
-        let fn_type = self.context.i64_type().fn_type(args_types, false);
-        let fn_val = self.module.add_function(proto.name.as_str(), fn_type, None);
-        // set arguments names
-        for (i, arg) in fn_val.get_param_iter().enumerate() {
-            if i == 0 {
-                arg.into_struct_value().set_name(proto.args[i].as_str());
-            } else {
-                arg.into_int_value().set_name(proto.args[i].as_str());
-            }
-        }
-        // finally return built prototype
-        Ok(fn_val)
-    }
-
     pub fn jit_compile_expr_root(
         &mut self,
         exprs: &[Expr],
     ) -> Result<JitFunction<MainFunc>, CompilerError> {
         let i64_type = self.context.i64_type();
 
-        let fn_type = i64_type.fn_type(&[self.wrap_struct.into()], false);
+        let fn_type = i64_type.fn_type(&[self.json_struct.into()], false);
         let function = self.module.add_function("main", fn_type, None);
         let w = function.get_nth_param(0).unwrap().into_struct_value();
 
@@ -150,19 +145,9 @@ impl Compiler {
             res = expr.compile(self)?
         }
 
-        let fun = self.module.get_function("printd").unwrap();
+        let fun = self.get_function("printjson")?;
         dbg!(&fun);
-        let res = match self
-            .builder
-            .build_call(fun, &[w.into(), res.into()], "call")
-            .try_as_basic_value()
-            .left()
-        {
-            Some(value) => value.into_int_value(),
-            None => {
-                return Err(CompilerError::Generic);
-            }
-        };
+        self.builder.build_call(fun, &[], "call");
 
         self.builder.build_return(Some(&res));
 
@@ -170,7 +155,7 @@ impl Compiler {
         unsafe {
             self.execution_engine
                 .get_function("main")
-                .map_err(|_| CompilerError::Generic)
+                .map_err(|_| CompilerError::UnknownFunction("main".to_string()))
         }
     }
 }
