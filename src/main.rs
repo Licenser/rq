@@ -8,10 +8,13 @@ mod std_lib;
 
 use crate::compiler::*;
 use crate::parser::*;
+use clap::{App, Arg};
 use jq::*;
 use simd_json::{json, OwnedValue as Value};
 use std::error::Error;
+use std::io::{self, Read};
 use std_lib::*;
+use std::io::prelude::*;
 
 #[no_mangle]
 pub extern "C" fn printd(w: Wrap) {
@@ -24,18 +27,39 @@ pub extern "C" fn printd(w: Wrap) {
 static EXTERNAL_FNS: [extern "C" fn(Wrap); 1] = [printd];
 
 fn main() -> Result<(), Box<Error>> {
-    let mut json: Value = json!({
-        "a": [1, 2, 3],
-        "b": {"c": "d"}
-    });
+    let matches = App::new("rq")
+        .version("1.0")
+        .about("jq but compiled!")
+        .author("Heinz G.")
+        .arg(
+            Arg::with_name("INPUT")
+                .help("Sets the input file to use")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("debug")
+                .long("debug")
+                .short("d")
+                .help("Sets the input file to use")
+                .required(false),
+        )
+        .get_matches();
+
+    let input = matches.value_of("INPUT").unwrap();
+    let debug = matches.is_present("debug");
+    let (_, p) = path(input).unwrap();
+    let mut jq = Script::from_path(p);
+    let jqs = jq.jit_compile_main(debug)?;
+
+    for l in io::stdin().lock().lines() {
+    unsafe {
+        let mut l = l.unwrap();
+    let mut json: Value = simd_json::to_owned_value(l.as_bytes_mut()).unwrap();
     let wrap = Wrap {
         error: 0,
         json: &json,
     };
-
-    let mut jq = Script::from_path(vec![Path::Root, Path::Key("a".into()), Path::Idx(1)]);
-    let jqs = jq.jit_compile_main()?;
-    unsafe {
         let r = jqs.call(wrap);
         if r.error == 0 {
             println!("{}", (&*r.json).to_string())
@@ -43,6 +67,8 @@ fn main() -> Result<(), Box<Error>> {
             println!("Error: {}", r.error)
         }
     }
+    }
+
     /*
     let script = "let a = 3; let a = 4 + a; a * 6";
     let (r, ast) = exprs(script).expect("Unable build ast");

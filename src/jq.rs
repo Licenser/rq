@@ -132,7 +132,7 @@ impl Script {
         compiler
     }
 
-    pub fn jit_compile_main(&mut self) -> Result<JitFunction<MainFunc>, CompilerError> {
+    pub fn jit_compile_main(&mut self, debug: bool) -> Result<JitFunction<MainFunc>, CompilerError> {
         let ret_type = self.json_struct;
 
         let fn_type = ret_type.fn_type(&[self.json_struct().into()], false);
@@ -150,7 +150,8 @@ impl Script {
 
         self.builder.build_return(Some(&res));
 
-        self.module.print_to_stderr();
+    if debug{
+        self.module.print_to_stderr();}
         unsafe {
             self.execution_engine
                 .get_function("main")
